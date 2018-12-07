@@ -240,7 +240,7 @@ class data_handling:
         """
 
         clf = svm.SVC(kernel='linear', C=1)
-        cv = StratifiedKFold(n_splits=5, shuffle=True)
+        cv = StratifiedKFold(n_splits=5, random_state=0, shuffle=True)
         scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy')
 
         return scores
