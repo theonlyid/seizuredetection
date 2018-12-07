@@ -15,6 +15,8 @@ import data_loader as dl
 from itertools import compress
 import matplotlib.pyplot as plt
 from scipy import signal
+from sklearn import svm
+from sklearn.model_selection import cross_val_score
 
 
 class data_handling:
@@ -28,18 +30,18 @@ class data_handling:
 
         self.load_data()
 
-        self.nperseg = 128
-        self.noverlap = 2*np.ceil(self.nperseg/3)
+        self.nperseg = 64
+        self.noverlap = 3*np.ceil(self.nperseg / 4)
         self.fmax = 50
 
     def load_data(self):
         """
         Loads the data and squeezes the arrays for easier handling.
         """
-
+        print("Loading dataset...")
         # Load the dataset
         subIDs, data, labels = dl.load_processed_data_N_subjects_allchans(
-            '/kiap/src/templeData/data_5sec_100Hz_bipolar/', Nsub=10)
+            '/kiap/src/templeData/data_5sec_100Hz_bipolar/', Nsub=14)
 
         if len(data) > 1:
 
@@ -142,7 +144,7 @@ class data_handling:
 
         return data_stft_norm, baseline_stft_norm, f
 
-    def get_snr(self, data_array_norm, baseline_array_norm, f):
+    def get_bands(self, data_array_norm, baseline_array_norm, f):
 
         fmax = 50
         fidx = f < fmax
@@ -160,18 +162,20 @@ class data_handling:
 
         band_tot_bl1 = np.mean(band_tot_bl, axis=3)     # average across time bins
         band_tot_bl2 = np.repeat(band_tot_bl1[:, :, :, None, :], band_tot_bl.shape[3], axis=3)    # repeat same value across time
+        return band_tot, band_tot_bl2, f[fidx]
 
-
-        mu_cue = np.mean(band_tot, axis=4)     # average accross trials
-        mu_bl = np.mean(band_tot_bl, axis=4)     # average accross trials
-        std_cue = np.std(band_tot, axis=4)     # average accross trials
-        std_bl = np.std(band_tot_bl, axis=4)     # average accross trials
+    def get_snr(self, target, baseline):
+        mu_cue = np.mean(target, axis=-1)     # average accross trials
+        mu_bl = np.mean(baseline, axis=-1)     # average accross trials
+        std_cue = np.std(target, axis=-1)     # average accross trials
+        std_bl = np.std(baseline, axis=-1)     # average accross trials
 
         snr = np.abs((mu_cue - mu_bl) / (std_cue + std_bl))
-        snr2 = np.nanmax(snr, axis=3)
-        snr3 = np.nanmean(snr2, axis=2)
+        snr2 = np.nanmax(snr, axis=-1)
+        if snr2.shape[0] == snr.shape[1]:
+            snr2 = np.nanmax(snr2, axis=-1)
 
-        return snr3, f[fidx]
+        return snr2
 
     def butter_filter(self, data, low_pass, high_pass, fs, order=10):
         """
@@ -186,6 +190,59 @@ class data_handling:
         filt_data = np.abs(signal.hilbert(signal.filtfilt(b, a, data, axis=1), axis=1))
         return filt_data
 
+    def plot_snr(self, snr):
+        plt.figure()
+        plt.imshow(snr, origin='lower', interpolation='bilinear')
+        plt.colorbar()
+        plt.xlabel("Band start (Hz)")
+        plt.ylabel("Band end (Hz)")
+        plt.title("SNR")
+        plt.draw()
+        plt.show()
+
+    def generate_features(self):
+        """
+        Generates feature vectors for feeding into SVM.
+        """
+
+        # For each STFT timebin, divide data into three bins and get mean power
+        data_array = np.array([])
+        bl_array = np.array([])
+
+        for trial in range(self.data_stft_norm.shape[-1]):       # Each trial
+            for tbin in range(self.data_stft_norm.shape[-2]):    # Each timebin
+                for ch in range(self.data_stft_norm.shape[0]):
+                    data_array = np.append(data_array,[
+                                            np.mean(self.data_stft_norm[ch,   :2, tbin, trial]),
+                                            np.mean(self.data_stft_norm[ch,  3:8, tbin, trial]),
+                                            np.mean(self.data_stft_norm[ch, 9:27, tbin, trial])])
+        
+        data_array = np.reshape(data_array, (-1, 18))
+        
+        for trial in range(self.bl_stft_norm.shape[-1]):       # Each trial
+            for tbin in range(self.bl_stft_norm.shape[-2]):    # Each timebin
+                for ch in range(self.bl_stft_norm.shape[0]):
+                    bl_array = np.append(bl_array, [
+                                            np.mean(self.bl_stft_norm[ch,   :2, tbin, trial]),
+                                            np.mean(self.bl_stft_norm[ch,  3:8, tbin, trial]),
+                                            np.mean(self.bl_stft_norm[ch, 9:27, tbin, trial])])
+        bl_array = np.reshape(bl_array, (-1, 18))
+
+        X = np.append(data_array, bl_array, axis=0)
+        y = np.append(np.ones(data_array.shape[0]), np.zeros(bl_array.shape[0]))
+
+        return X, y
+
+    def classify(self, X, y):
+        """
+
+        """
+
+        clf = svm.SVC(kernel='linear', C=1)
+        scores = cross_val_score(clf, X, y, cv=5)
+
+        return scores
+
     def simulate(self):
         """
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
@@ -199,24 +256,22 @@ class data_handling:
 
         idx = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 9] > 0]
         idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 6] > 0]
-        self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx], self.data[:, :, idx_bl[:100]], norm)
-        snr, f = self.get_snr(self.data_stft_norm, self.bl_stft_norm, f)
+        
+        print("Normalizing data...")
+        self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx], self.data[:, :, idx_bl[:len(idx)]], norm)
+        band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
+        
+        print("Obtaining SNR...")
+        snr = self.get_snr(band_tot, band_tot_bl2)
+        self.plot_snr(snr)
+        X, y = self.generate_features()
+        print("Training classifier...")
+        scores = self.classify(X, y)
 
-        plt.figure()
-        plt.imshow(snr, origin='lower')
-        plt.colorbar()
-        plt.xlabel("Band start (Hz)")
-        plt.ylabel("Band end (Hz)")
-        plt.title("SNR")
-        plt.draw()
-        plt.show()
-
-        # i, j = np.where(snr=np.nanmax(snr[:40, :40]))
-
-        return snr, f
+        return scores
 
 
 if __name__ == '__main__':
 
     dh = data_handling()
-    snr, f = dh.simulate()
+    scores = dh.simulate()
