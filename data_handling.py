@@ -41,7 +41,7 @@ class data_handling:
         print("Loading dataset...")
         # Load the dataset
         subIDs, data, labels = dl.load_processed_data_N_subjects_allchans(
-            '/kiap/src/templeData/data_5sec_100Hz_bipolar/', Nsub=14)
+            '../data_5sec_100Hz_bipolar/', Nsub=14)
 
         if len(data) > 1:
 
@@ -239,7 +239,7 @@ class data_handling:
         """
 
         clf = svm.SVC(kernel='linear', C=1)
-        scores = cross_val_score(clf, X, y, cv=5)
+        scores = cross_val_score(clf, X, y, cv=5, scoring='balanced_accuracy')
 
         return scores
 
