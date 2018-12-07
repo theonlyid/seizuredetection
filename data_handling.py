@@ -66,7 +66,7 @@ class data_handling:
 
         valid_indices = np.sum(self.labels, axis=0)
         names = [[self.label_strings[i], i, valid_indices[i]] for i in range(len(valid_indices)) if valid_indices[i] > 0]
-        print("A summary of valid labels is below. \nFormat: [Label name, label index, Label count]")
+        print("A summary of valid labels is below: \nFormat: [Label name, label index, Label count]")
         for i in range(len(names)):
             print(names[i])
         return
@@ -253,15 +253,12 @@ class data_handling:
 
         return scores
 
-    def simulate(self):
+    def simulate(self, target_label, baseline_label):
         """
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
         """
 
         norm = self.get_norm_array(self.data)
-
-        target_label = 15
-        baseline_label = 0
 
         idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, target_label] > 0]
         print("Using label {} as target".format(target_label))
@@ -269,7 +266,7 @@ class data_handling:
         print("Using label {} as baseline".format(baseline_label))
 
         print("Normalizing data...")
-        self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cue], self.data[:, :, idx_bl[:len(idx_cue)]], norm)
+        self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cue], self.data[:, :, idx_bl], norm)
         band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
 
         # print("Obtaining SNR...")
@@ -289,4 +286,4 @@ class data_handling:
 if __name__ == '__main__':
 
     dh = data_handling()
-    dh.simulate()
+    dh.simulate(15, 0)
