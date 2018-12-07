@@ -145,6 +145,9 @@ class data_handling:
         return data_stft_norm, baseline_stft_norm, f
 
     def get_bands(self, data_array_norm, baseline_array_norm, f):
+        """
+        Obtains the range of bands where the SNR is the highest.
+        """
 
         fmax = 50
         fidx = f < fmax
@@ -165,6 +168,10 @@ class data_handling:
         return band_tot, band_tot_bl2, f[fidx]
 
     def get_snr(self, target, baseline):
+        """
+        Returns the SNR given two vectors: target and baseline
+        """
+
         mu_cue = np.mean(target, axis=-1)     # average accross trials
         mu_bl = np.mean(baseline, axis=-1)     # average accross trials
         std_cue = np.std(target, axis=-1)     # average accross trials
@@ -217,9 +224,9 @@ class data_handling:
                                             np.mean(self.data_stft_norm[ch,   :2, tbin, trial]),
                                             np.mean(self.data_stft_norm[ch,  3:8, tbin, trial]),
                                             np.mean(self.data_stft_norm[ch, 9:27, tbin, trial])])
-        
+
         data_array = np.reshape(data_array, (-1, 18))
-        
+
         for trial in range(self.bl_stft_norm.shape[-1]):       # Each trial
             for tbin in range(self.bl_stft_norm.shape[-2]):    # Each timebin
                 for ch in range(self.bl_stft_norm.shape[0]):
@@ -236,11 +243,12 @@ class data_handling:
 
     def classify(self, X, y):
         """
-
+        Trains an SVM on the data with 5x5 cross-validation.
         """
 
         clf = svm.SVC(kernel='linear', C=1)
         cv = StratifiedKFold(n_splits=5, random_state=0, shuffle=True)
+
         scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy')
 
         return scores
@@ -252,30 +260,33 @@ class data_handling:
 
         norm = self.get_norm_array(self.data)
 
-        target_label = 11
+        target_label = 15
         baseline_label = 0
 
         idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, target_label] > 0]
         print("Using label {} as target".format(target_label))
         idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
         print("Using label {} as baseline".format(baseline_label))
-        
+
         print("Normalizing data...")
         self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cue], self.data[:, :, idx_bl[:len(idx_cue)]], norm)
         band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
-        
-        print("Obtaining SNR...")
-        snr = self.get_snr(band_tot, band_tot_bl2)
-        self.plot_snr(snr)
-        X, y = self.generate_features()
-        print("Training classifier with 5x5 CV...")
-        scores = self.classify(X, y)
 
-        print("Mean accuracy with 95 percent CI: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std()*2))
-        return snr, scores
+        # print("Obtaining SNR...")
+        # snr = self.get_snr(band_tot, band_tot_bl2)
+        # self.plot_snr(snr)
+
+        print("Generating training dataset...")
+        X, y = self.generate_features()
+
+        print("Training classifier with 5x5 CV...")
+        self.scores = self.classify(X, y)
+
+        print("Classification accuracy: %0.2f (+/- %0.2f)" % (self.scores.mean(), self.scores.std()*2))
+        return self.scores
 
 
 if __name__ == '__main__':
 
     dh = data_handling()
-    snr, scores = dh.simulate()
+    dh.simulate()
