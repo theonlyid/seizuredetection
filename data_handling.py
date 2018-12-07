@@ -16,7 +16,7 @@ from itertools import compress
 import matplotlib.pyplot as plt
 from scipy import signal
 from sklearn import svm
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, StratifiedKFold
 
 
 class data_handling:
@@ -194,6 +194,7 @@ class data_handling:
         plt.figure()
         plt.imshow(snr, origin='lower', interpolation='bilinear')
         plt.colorbar()
+        plt.clim(0,)
         plt.xlabel("Band start (Hz)")
         plt.ylabel("Band end (Hz)")
         plt.title("SNR")
@@ -239,7 +240,8 @@ class data_handling:
         """
 
         clf = svm.SVC(kernel='linear', C=1)
-        scores = cross_val_score(clf, X, y, cv=5, scoring='balanced_accuracy')
+        cv = StratifiedKFold(n_splits=5, shuffle=True)
+        scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy')
 
         return scores
 
@@ -251,11 +253,11 @@ class data_handling:
         norm = self.get_norm_array(self.data)
 
         target_label = 11
-        baseline_label = 6
+        baseline_label = 0
 
-        idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 11] > 0]
+        idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, target_label] > 0]
         print("Using label {} as target".format(target_label))
-        idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 6] > 0]
+        idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
         print("Using label {} as baseline".format(baseline_label))
         
         print("Normalizing data...")
@@ -270,10 +272,10 @@ class data_handling:
         scores = self.classify(X, y)
 
         print("Mean accuracy with 95 percent CI: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std()*2))
-        return scores
+        return snr, scores
 
 
 if __name__ == '__main__':
 
     dh = data_handling()
-    scores = dh.simulate()
+    snr, scores = dh.simulate()
