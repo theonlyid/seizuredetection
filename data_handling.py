@@ -248,26 +248,28 @@ class data_handling:
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
         """
 
-        # s = self.get_label_string(self.labels[0])
-        # print("Label for epoch {} is {}".format(0, s))
-        # self.plot_channels(self.data[:, :, 0])
-
         norm = self.get_norm_array(self.data)
 
-        idx = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 9] > 0]
+        target_label = 11
+        baseline_label = 6
+
+        idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 11] > 0]
+        print("Using label {} as target".format(target_label))
         idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 6] > 0]
+        print("Using label {} as baseline".format(baseline_label))
         
         print("Normalizing data...")
-        self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx], self.data[:, :, idx_bl[:len(idx)]], norm)
+        self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cue], self.data[:, :, idx_bl[:len(idx_cue)]], norm)
         band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
         
         print("Obtaining SNR...")
         snr = self.get_snr(band_tot, band_tot_bl2)
         self.plot_snr(snr)
         X, y = self.generate_features()
-        print("Training classifier...")
+        print("Training classifier with 5x5 CV...")
         scores = self.classify(X, y)
 
+        print("Mean accuracy with 95 percent CI: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std()*2))
         return scores
 
 
