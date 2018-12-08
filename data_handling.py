@@ -170,7 +170,7 @@ class data_handling:
 
     def get_snr(self, target, baseline):
         """
-        Returns the SNR given two vectors: target and baseline
+        Returns the SNR given two vectors: target and baseline.
         """
 
         mu_cue = np.mean(target, axis=-1)     # average accross trials
@@ -258,9 +258,9 @@ class data_handling:
         clf = svm.SVC(kernel='linear', C=1).fit(X_train, y_train)
         #s = clf.score(X_test, y_test)
         yhat = clf.predict(X_test)
-        #s = balanced_accuracy_score(y_test, yhat)
-        s = matthews_corrcoef(y_test, yhat)
-        print("Train test split score is %0.2f" %(s))
+        s = balanced_accuracy_score(y_test, yhat)
+        c = matthews_corrcoef(y_test, yhat)
+        print("Matthews corr coeff = %0.2f, balanced test accuracy = %0.2f" %(c, s))
 
         return scores
 
@@ -290,7 +290,7 @@ class data_handling:
         print("Training classifier with 5x5 CV...")
         self.scores = self.classify(X, y)
 
-        print("Classification accuracy: %0.2f (+/- %0.2f)" % (self.scores.mean(), self.scores.std()*2))
+        print("cross-validation accuracy: %0.2f (+/- %0.2f)" % (self.scores.mean(), self.scores.std()*2))
         return self.scores
 
 
