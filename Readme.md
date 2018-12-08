@@ -17,7 +17,7 @@ This is code has been developed as part of the ICU Cockpit project at UZH.
 The code uses a method called simulate() to demonstrate the data processing pipeline. It is based on spectral decomposition and normalization. To train a binary SVM classifier, call the simulate method with the index of the data_label. Eg:
 
 	>>> dh = data_handling()
-	>>> dh.simulate(9,6)
+	>>> dh.simulate(15,6)
 	
 will output something like:
 
