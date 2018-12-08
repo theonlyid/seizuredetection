@@ -16,7 +16,8 @@ from itertools import compress
 import matplotlib.pyplot as plt
 from scipy import signal
 from sklearn import svm
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
+from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef
 
 
 class data_handling:
@@ -251,6 +252,16 @@ class data_handling:
 
         scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy')
 
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=0)
+
+        clf = svm.SVC(kernel='linear', C=1).fit(X_train, y_train)
+        #s = clf.score(X_test, y_test)
+        yhat = clf.predict(X_test)
+        #s = balanced_accuracy_score(y_test, yhat)
+        s = matthews_corrcoef(y_test, yhat)
+        print("Train test split score is %0.2f" %(s))
+
         return scores
 
     def simulate(self, target_label, baseline_label):
@@ -267,7 +278,7 @@ class data_handling:
 
         print("Normalizing data...")
         self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cue], self.data[:, :, idx_bl], norm)
-        band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
+        # band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
 
         # print("Obtaining SNR...")
         # snr = self.get_snr(band_tot, band_tot_bl2)
