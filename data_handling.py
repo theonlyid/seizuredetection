@@ -212,6 +212,9 @@ class data_handling:
     def generate_features(self):
         """
         Generates feature vectors for feeding into SVM.
+
+        Currently, that means taking the mean power in three frequency ranges:
+        (0 - 3 Hz, 3 - 12 Hz, 12 - 30 Hz) generating 18 in all (nchans = 6)
         """
 
         # For each STFT timebin, divide data into three bins and get mean power
@@ -271,8 +274,8 @@ class data_handling:
 
         norm = self.get_norm_array(self.data)
 
-        idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, target_label] > 0]
         print("Using label {} as target".format(target_label))
+        idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, target_label] > 0]
         idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
         print("Using label {} as baseline".format(baseline_label))
 
@@ -290,7 +293,7 @@ class data_handling:
         print("Training classifier with 5x5 CV...")
         self.scores = self.classify(X, y)
 
-        print("cross-validation accuracy: %0.2f (+/- %0.2f)" % (self.scores.mean(), self.scores.std()*2))
+        print("cross-validation accuracy: %0.2f (+/- %0.2f 95/% CI)" % (self.scores.mean(), self.scores.std()*2))
         return self.scores
 
 
