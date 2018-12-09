@@ -118,32 +118,32 @@ class data_handling:
 
         return norm_array
 
-    def normalize_arrays(self, data_array, baseline_array, norm_array, vectorize=True):
+    def normalize_arrays(self, data_array, norm_array, vectorize=True):
         """
         This is where the magic happens!
         """
 
         # Calculate the short-time fourrier transform
-        f, _, baseline_stft = signal.stft(
-            baseline_array, fs=100, nperseg=self.nperseg, noverlap=self.noverlap, axis=1)
-        _, _, data_stft = signal.stft(
+        # f, _, baseline_stft = signal.stft(
+        #     baseline_array, fs=100, nperseg=self.nperseg, noverlap=self.noverlap, axis=1)
+        f, _, data_stft = signal.stft(
             data_array, fs=100, nperseg=self.nperseg, noverlap=self.noverlap, axis=1)
 
         # Make last axis as trials
-        baseline_stft = np.moveaxis(np.abs(baseline_stft), 2, 3)
+        # baseline_stft = np.moveaxis(np.abs(baseline_stft), 2, 3)
         data_stft = np.moveaxis(np.abs(data_stft), 2, 3)
 
         if vectorize:
 
             # Facilitate vectorized division
             norm_array_data = np.repeat(norm_array[:, :, :, None], data_stft.shape[3], axis=3)
-            norm_array_bl = np.repeat(norm_array[:, :, :, None], baseline_stft.shape[3], axis=3)
+            # norm_array_bl = np.repeat(norm_array[:, :, :, None], baseline_stft.shape[3], axis=3)
 
             # Normalize the spectrograms for calculating SNR
             data_stft_norm = data_stft / norm_array_data
-            baseline_stft_norm = baseline_stft / norm_array_bl
+            # baseline_stft_norm = baseline_stft / norm_array_bl
 
-        return data_stft_norm, baseline_stft_norm, f
+        return data_stft_norm, f
 
     def get_bands(self, data_array_norm, baseline_array_norm, f):
         """
@@ -209,39 +209,47 @@ class data_handling:
         plt.draw()
         plt.show()
 
-    def generate_features(self):
+    def generate_features(self, data, y_label):
         """
         Generates feature vectors for feeding into SVM.
 
         Currently, that means taking the mean power in three frequency ranges:
         (0 - 3 Hz, 3 - 12 Hz, 12 - 30 Hz) generating 18 in all (nchans = 6)
+
+        Inputs:
+            data_array: array with shape nchan x f x tbin x trials (see get_norm_array())
+            y_label     label to be given (used to generate vector y)
+
+        Returns:
+            X:  Array of features x trials (different from number of epochs)
+            y:  vector with class label
         """
 
         # For each STFT timebin, divide data into three bins and get mean power
         data_array = np.array([])
-        bl_array = np.array([])
+        # bl_array = np.array([])
 
-        for trial in range(self.data_stft_norm.shape[-1]):       # Each trial
-            for tbin in range(self.data_stft_norm.shape[-2]):    # Each timebin
-                for ch in range(self.data_stft_norm.shape[0]):
+        for trial in range(data.shape[-1]):       # Each trial
+            for tbin in range(data.shape[-2]):    # Each timebin
+                for ch in range(self.data.shape[0]):
                     data_array = np.append(data_array,[
-                                            np.mean(self.data_stft_norm[ch,   :2, tbin, trial]),
-                                            np.mean(self.data_stft_norm[ch,  3:8, tbin, trial]),
-                                            np.mean(self.data_stft_norm[ch, 9:27, tbin, trial])])
+                                            np.mean(data[ch,   :2, tbin, trial]),
+                                            np.mean(data[ch,  3:8, tbin, trial]),
+                                            np.mean(data[ch, 9:27, tbin, trial])])
 
         data_array = np.reshape(data_array, (-1, 18))
 
-        for trial in range(self.bl_stft_norm.shape[-1]):       # Each trial
-            for tbin in range(self.bl_stft_norm.shape[-2]):    # Each timebin
-                for ch in range(self.bl_stft_norm.shape[0]):
-                    bl_array = np.append(bl_array, [
-                                            np.mean(self.bl_stft_norm[ch,   :2, tbin, trial]),
-                                            np.mean(self.bl_stft_norm[ch,  3:8, tbin, trial]),
-                                            np.mean(self.bl_stft_norm[ch, 9:27, tbin, trial])])
-        bl_array = np.reshape(bl_array, (-1, 18))
+        # for trial in range(self.bl_stft_norm.shape[-1]):       # Each trial
+        #     for tbin in range(self.bl_stft_norm.shape[-2]):    # Each timebin
+        #         for ch in range(self.bl_stft_norm.shape[0]):
+        #             bl_array = np.append(bl_array, [
+        #                                     np.mean(self.bl_stft_norm[ch,   :2, tbin, trial]),
+        #                                     np.mean(self.bl_stft_norm[ch,  3:8, tbin, trial]),
+        #                                     np.mean(self.bl_stft_norm[ch, 9:27, tbin, trial])])
+        # bl_array = np.reshape(bl_array, (-1, 18))
 
-        X = np.append(data_array, bl_array, axis=0)
-        y = np.append(np.ones(data_array.shape[0]), np.zeros(bl_array.shape[0]))
+        X = data_array
+        y = np.ones(data_array.shape[0])*y_label
 
         return X, y
 
@@ -267,20 +275,29 @@ class data_handling:
 
         return scores
 
-    def simulate(self, target_label, baseline_label):
+    def simulate(self):
         """
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
         """
 
-        norm = self.get_norm_array(self.data)
+        idx_null = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 0] > 0]
+        idx_bckg = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 6] > 0]
+        idx_gnsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 9] > 0]
+        idx_cpsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 11] > 0]
+        idx_tcsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 15] > 0]
 
-        print("Using label {} as target".format(target_label))
-        idx_cue = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, target_label] > 0]
-        idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
-        print("Using label {} as baseline".format(baseline_label))
+
+        # idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
+        # print("Using label {} as baseline".format(baseline_label))
 
         print("Normalizing data...")
-        self.data_stft_norm, self.bl_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cue], self.data[:, :, idx_bl], norm)
+        norm = self.get_norm_array(self.data)
+        self.null_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_null], norm)
+        self.bckg_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_bckg], norm)
+        self.gnsz_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_gnsz], norm)
+        self.cpsz_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cpsz], norm)
+        self.tcsz_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_tcsz], norm)
+
         # band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
 
         # print("Obtaining SNR...")
@@ -288,16 +305,26 @@ class data_handling:
         # self.plot_snr(snr)
 
         print("Generating training dataset...")
-        X, y = self.generate_features()
+        X_null, y_null = self.generate_features(self.null_stft_norm, 0)
+        X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
+        X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
+        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 2)
+        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 3)
+
+
+        # Append the matrices
+
+        X = np.append(X_null, X_bckg, X_gnsz, X_cpsz, X_tcsz, axis=0)
+        y = np.append(y_null, y_bckg, y_gnsz, y_cpsz, y_tcsz, axis=0)
 
         print("Training classifier with 5x5 CV...")
         self.scores = self.classify(X, y)
 
-        print("cross-validation accuracy: %0.2f (+/- %0.2f 95/% CI)" % (self.scores.mean(), self.scores.std()*2))
+        print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (self.scores.mean(), self.scores.std()*2))
         return self.scores
 
 
 if __name__ == '__main__':
 
     dh = data_handling()
-    dh.simulate(15, 0)
+    dh.simulate()
