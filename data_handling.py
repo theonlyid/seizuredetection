@@ -32,7 +32,7 @@ class data_handling:
         self.load_data()
 
         self.nperseg = 64
-        self.noverlap = 3*np.ceil(self.nperseg / 4)
+        self.noverlap = np.ceil(self.nperseg / 4)
         self.fmax = 50
 
     def load_data(self):
@@ -236,6 +236,8 @@ class data_handling:
                                             np.mean(data[ch,   :2, tbin, trial]),
                                             np.mean(data[ch,  3:8, tbin, trial]),
                                             np.mean(data[ch, 9:27, tbin, trial])])
+            if trial % 100 ==0:
+                print("Trial number %d out of %d" %(trial, data.shape[-1]))
 
         data_array = np.reshape(data_array, (-1, 18))
 
@@ -314,8 +316,15 @@ class data_handling:
 
         # Append the matrices
 
-        X = np.append(X_null, X_bckg, X_gnsz, X_cpsz, X_tcsz, axis=0)
-        y = np.append(y_null, y_bckg, y_gnsz, y_cpsz, y_tcsz, axis=0)
+        X = np.append(X_null, X_bckg, axis=0)
+        X = np.append(X, X_gnsz, axis=0)
+        X = np.append(X, X_cpsz, axis=0)
+        X = np.append(X, X_tcsz, axis=0)
+
+        y = np.append(y_null, y_bckg, axis=0)
+        y = np.append(y, y_gnsz, axis=0)
+        y = np.append(y, y_cpsz, axis=0)
+        y = np.append(y, y_tcsz, axis=0)
 
         print("Training classifier with 5x5 CV...")
         self.scores = self.classify(X, y)
