@@ -19,9 +19,9 @@ The code uses a method called simulate() to demonstrate the data processing pipe
 	>>> dh = data_handling()
 	>>> dh.simulate()
 	
-The current version only uses 3 features per channel, for a total of 18 features. A full-scale analysis of optimal features and classifier models is beyond the scope of this example, but is the next stop in the analysis.
+The current version only uses 3 features per channel, for a total of 18 features. A full-scale analysis of optimal features and classifier models is beyond the scope of this example, but is the next step in the analysis.
 
-Use 'dh.scores' to get the cross-validation scores.
+Use 'dh.scores' to get the cross-validation scores. Eg.:
 
 	>>> dh.scores
 	array([0.82069756, 0.83945468, 0.83773429, 0.82047812, 0.82577517])
