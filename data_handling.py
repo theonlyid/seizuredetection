@@ -16,8 +16,13 @@ from itertools import compress
 import matplotlib.pyplot as plt
 from scipy import signal
 from sklearn import svm
+from sklearn.svm import LinearSVC
+from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
 from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef
+import multiprocessing
+import joblib
+from tqdm import tqdm
 
 
 class data_handling:
@@ -229,15 +234,13 @@ class data_handling:
         data_array = np.array([])
         # bl_array = np.array([])
 
-        for trial in range(data.shape[-1]):       # Each trial
+        for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
             for tbin in range(data.shape[-2]):    # Each timebin
                 for ch in range(self.data.shape[0]):
                     data_array = np.append(data_array,[
                                             np.mean(data[ch,   :2, tbin, trial]),
                                             np.mean(data[ch,  3:8, tbin, trial]),
                                             np.mean(data[ch, 9:27, tbin, trial])])
-            if trial % 100 ==0:
-                print("Trial number %d out of %d" %(trial, data.shape[-1]))
 
         data_array = np.reshape(data_array, (-1, 18))
 
@@ -255,25 +258,38 @@ class data_handling:
 
         return X, y
 
-    def classify(self, X, y):
+    def classify(self, X, y, multiclass=True):
         """
         Trains an SVM on the data with 5x5 cross-validation.
         """
 
-        clf = svm.SVC(kernel='linear', C=1)
-        cv = StratifiedKFold(n_splits=5, random_state=0, shuffle=True)
+        cores = multiprocessing.cpu_count()
 
-        scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy')
+        if multiclass:
+            clf = svm.SVC(kernel='rbf', C=1)
 
+            cv = StratifiedKFold(n_splits=5, random_state=0, shuffle=True)
+
+            scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
+            print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
+
+        else:
+            clf = svm.SVC(kernel='rbf', C=1)
+
+            cv = StratifiedKFold(n_splits=5, random_state=0, shuffle=True)
+
+            scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
+
+        # Use joblib and multiprocessing to make this part run over multiple cores
+        print("Peforming train-test split with 0.2 test size")
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=0)
-
-        clf = svm.SVC(kernel='linear', C=1).fit(X_train, y_train)
+        clf.fit(X_train, y_train)
         #s = clf.score(X_test, y_test)
         yhat = clf.predict(X_test)
         s = balanced_accuracy_score(y_test, yhat)
         c = matthews_corrcoef(y_test, yhat)
-        print("Matthews corr coeff = %0.2f, balanced test accuracy = %0.2f" %(c, s))
+        print("Matthews corr coeff = %0.2f, balanced test score = %0.2f" %(c, s))
 
         return scores
 
@@ -283,7 +299,7 @@ class data_handling:
         """
 
         idx_null = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 0] > 0]
-        idx_bckg = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 6] > 0]
+        idx_bckg = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 6] > 0][:800]
         idx_gnsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 9] > 0]
         idx_cpsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 11] > 0]
         idx_tcsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 15] > 0]
@@ -292,6 +308,7 @@ class data_handling:
         # idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
         # print("Using label {} as baseline".format(baseline_label))
 
+        # Vectorize this part of th code
         print("Normalizing data...")
         norm = self.get_norm_array(self.data)
         self.null_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_null], norm)
@@ -306,7 +323,7 @@ class data_handling:
         # snr = self.get_snr(band_tot, band_tot_bl2)
         # self.plot_snr(snr)
 
-        print("Generating training dataset...")
+        print("Generating training datasets...")
         X_null, y_null = self.generate_features(self.null_stft_norm, 0)
         X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
         X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
@@ -329,7 +346,6 @@ class data_handling:
         print("Training classifier with 5x5 CV...")
         self.scores = self.classify(X, y)
 
-        print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (self.scores.mean(), self.scores.std()*2))
         return self.scores
 
 
