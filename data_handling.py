@@ -17,11 +17,9 @@ import matplotlib.pyplot as plt
 from scipy import signal
 from sklearn import svm
 from sklearn.svm import LinearSVC
-from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
 from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef
 import multiprocessing
-import joblib
 from tqdm import tqdm
 
 
@@ -37,7 +35,7 @@ class data_handling:
         self.load_data()
 
         self.nperseg = 64
-        self.noverlap = np.ceil(self.nperseg / 4)
+        self.noverlap = 3*np.ceil(self.nperseg / 4)
         self.fmax = 50
 
     def load_data(self):
@@ -289,7 +287,7 @@ class data_handling:
         yhat = clf.predict(X_test)
         s = balanced_accuracy_score(y_test, yhat)
         c = matthews_corrcoef(y_test, yhat)
-        print("Matthews corr coeff = %0.2f, balanced test score = %0.2f" %(c, s))
+        print("Matthews corr coef = %0.2f, balanced test score = %0.2f" %(c, s))
 
         return scores
 
