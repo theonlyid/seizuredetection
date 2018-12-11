@@ -269,7 +269,7 @@ class data_handling:
         cores = multiprocessing.cpu_count()
 
         if multiclass:
-            clf = svm.SVC(kernel='rbf', C=1, gamma='scaled')
+            clf = svm.SVC(kernel='rbf', C=1, gamma='scale')
 
             cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
 
