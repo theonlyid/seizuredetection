@@ -14,7 +14,7 @@ This is code has been developed as part of the ICU Cockpit project at UZH.
 3. Run the code
 
 ### How do I use the code?
-The code uses a method called simulate() to demonstrate the data processing pipeline. It is based on spectral decomposition and normalization. The code trains a binary SVM to discriminate between normal ('bckg, 'null') and seizure types. Eg.:
+The code uses a method called simulate() to demonstrate the data processing pipeline. It is based on spectral decomposition and normalization. The code trains a binary SVM to discriminate between normal ('bckg, 'null') and seizure-type activity. Eg.:
 
 	>>> dh = data_handling()
 	>>> dh.simulate()
