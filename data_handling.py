@@ -10,17 +10,22 @@ Date:   14.11.2018
 (c) All Rights Reserved
 """
 
-import numpy as np
-import data_loader as dl
-from itertools import compress
-import matplotlib.pyplot as plt
-from scipy import signal
-from sklearn import svm
-from sklearn.svm import LinearSVC
-from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef
-import multiprocessing
-from tqdm import tqdm
+import warnings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
+
+    import numpy as np
+    import data_loader as dl
+    from itertools import compress
+    import matplotlib.pyplot as plt
+    from scipy import signal
+    from sklearn import svm
+    from sklearn.svm import LinearSVC
+    from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
+    from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef
+    import multiprocessing
+    from tqdm import tqdm
 
 
 class data_handling:
@@ -264,9 +269,9 @@ class data_handling:
         cores = multiprocessing.cpu_count()
 
         if multiclass:
-            clf = svm.SVC(kernel='rbf', C=1)
+            clf = svm.SVC(kernel='rbf', C=1, gamma='scaled')
 
-            cv = StratifiedKFold(n_splits=5, random_state=0, shuffle=True)
+            cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
 
             scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
             print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
@@ -274,14 +279,14 @@ class data_handling:
         else:
             clf = svm.SVC(kernel='rbf', C=1)
 
-            cv = StratifiedKFold(n_splits=5, random_state=0, shuffle=True)
+            cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
 
             scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
 
         # Use joblib and multiprocessing to make this part run over multiple cores
         print("Peforming train-test split with 0.2 test size")
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=0)
+            X, y, test_size=0.2, random_state=42)
         clf.fit(X_train, y_train)
         #s = clf.score(X_test, y_test)
         yhat = clf.predict(X_test)
