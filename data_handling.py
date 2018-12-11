@@ -330,8 +330,8 @@ class data_handling:
         X_null, y_null = self.generate_features(self.null_stft_norm, 0)
         X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
         X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
-        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 2)
-        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 3)
+        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 1)
+        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 1)
 
 
         # Append the matrices
