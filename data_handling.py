@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 """
 Bundle of methods for handling Temple Unversity EEG corpus data
 
@@ -13,8 +14,7 @@ Date:   14.11.2018
 import warnings
 
 with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=FutureWarning)
-
+    warnings.simplefilter("ignore")
     import numpy as np
     import data_loader as dl
     from itertools import compress
@@ -26,6 +26,7 @@ with warnings.catch_warnings():
     from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef
     import multiprocessing
     from tqdm import tqdm
+    import scipy.stats
 
 
 class data_handling:
@@ -126,7 +127,7 @@ class data_handling:
 
         return norm_array
 
-    def normalize_arrays(self, data_array, norm_array, vectorize=True):
+    def get_stft(self, data_array, norm_array=[], normalize=True):
         """
         This is where the magic happens!
         """
@@ -141,7 +142,7 @@ class data_handling:
         # baseline_stft = np.moveaxis(np.abs(baseline_stft), 2, 3)
         data_stft = np.moveaxis(np.abs(data_stft), 2, 3)
 
-        if vectorize:
+        if normalize:
 
             # Facilitate vectorized division
             norm_array_data = np.repeat(norm_array[:, :, :, None], data_stft.shape[3], axis=3)
@@ -151,7 +152,11 @@ class data_handling:
             data_stft_norm = data_stft / norm_array_data
             # baseline_stft_norm = baseline_stft / norm_array_bl
 
-        return data_stft_norm, f
+            return data_stft_norm, f
+
+        else:
+
+            return data_stft, f
 
     def get_bands(self, data_array_norm, baseline_array_norm, f):
         """
@@ -261,7 +266,7 @@ class data_handling:
 
         return X, y
 
-    def classify(self, X, y, multiclass=True):
+    def classify(self, X, y, multiclass=False):
         """
         Trains an SVM on the data with 5x5 cross-validation.
         """
@@ -272,27 +277,28 @@ class data_handling:
             clf = svm.SVC(kernel='linear', C=1, gamma='scale')
 
             cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
-
+            print("Training classifier on dataset")
             scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
             print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
 
         else:
-            clf = svm.SVC(kernel='rbf', C=1)
+            clf = svm.SVC(kernel='rbf', C=1, gamma='scale')
 
             cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
-
+            print("Training classifier on dataset")
             scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
+            print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
 
         # Use joblib and multiprocessing to make this part run over multiple cores
-        print("Peforming train-test split with 0.2 test size")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42)
-        clf.fit(X_train, y_train)
-        #s = clf.score(X_test, y_test)
-        yhat = clf.predict(X_test)
-        s = balanced_accuracy_score(y_test, yhat)
-        c = matthews_corrcoef(y_test, yhat)
-        print("Matthews corr coef = %0.2f, balanced test score = %0.2f" %(c, s))
+        # print("Peforming train-test split with 0.2 test size")
+        # X_train, X_test, y_train, y_test = train_test_split(
+        #     X, y, test_size=0.2, random_state=42)
+        # clf.fit(X_train, y_train)
+        # #s = clf.score(X_test, y_test)
+        # yhat = clf.predict(X_test)
+        # s = balanced_accuracy_score(y_test, yhat)
+        # c = matthews_corrcoef(y_test, yhat)
+        # print("Matthews corr coef = %0.2f, balanced test score = %0.2f" %(c, s))
 
         return scores
 
@@ -311,14 +317,43 @@ class data_handling:
         # idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
         # print("Using label {} as baseline".format(baseline_label))
 
-        # Vectorize this part of th code
+        self.null_stft, _ = self.get_stft(self.data[:, :, idx_null], normalize=False)
+        self.bckg_stft, _ = self.get_stft(self.data[:, :, idx_bckg], normalize=False)
+        self.gnsz_stft, _ = self.get_stft(self.data[:, :, idx_gnsz], normalize=False)
+        self.cpsz_stft, _ = self.get_stft(self.data[:, :, idx_cpsz], normalize=False)
+        self.tcsz_stft, _ = self.get_stft(self.data[:, :, idx_tcsz], normalize=False)
+
+        print("Generating training datasets for non-normalized data...")
+        X_null, y_null = self.generate_features(self.null_stft, 0)
+        X_bckg, y_bckg = self.generate_features(self.bckg_stft, 0)
+        X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft, 1)
+        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft, 1)
+        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft, 1)
+
+
+        # Append the matrices
+
+        X = np.append(X_null, X_bckg, axis=0)
+        X = np.append(X, X_gnsz, axis=0)
+        X = np.append(X, X_cpsz, axis=0)
+        X = np.append(X, X_tcsz, axis=0)
+
+        y = np.append(y_null, y_bckg, axis=0)
+        y = np.append(y, y_gnsz, axis=0)
+        y = np.append(y, y_cpsz, axis=0)
+        y = np.append(y, y_tcsz, axis=0)
+
+        print("Training classifier with 5x5 CV...")
+        self.scores = self.classify(X, y, multiclass=False)
+
+        # Vectorize this part of the code
         print("Normalizing data...")
         norm = self.get_norm_array(self.data)
-        self.null_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_null], norm)
-        self.bckg_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_bckg], norm)
-        self.gnsz_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_gnsz], norm)
-        self.cpsz_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_cpsz], norm)
-        self.tcsz_stft_norm, f = self.normalize_arrays(self.data[:, :, idx_tcsz], norm)
+        self.null_stft_norm, _ = self.get_stft(self.data[:, :, idx_null], norm)
+        self.bckg_stft_norm, _ = self.get_stft(self.data[:, :, idx_bckg], norm)
+        self.gnsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_gnsz], norm)
+        self.cpsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_cpsz], norm)
+        self.tcsz_stft_norm, f = self.get_stft(self.data[:, :, idx_tcsz], norm)
 
         # band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
 
@@ -326,7 +361,7 @@ class data_handling:
         # snr = self.get_snr(band_tot, band_tot_bl2)
         # self.plot_snr(snr)
 
-        print("Generating training datasets...")
+        print("Generating training datasets for normalized data...")
         X_null, y_null = self.generate_features(self.null_stft_norm, 0)
         X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
         X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
@@ -346,13 +381,18 @@ class data_handling:
         y = np.append(y, y_cpsz, axis=0)
         y = np.append(y, y_tcsz, axis=0)
 
+        self.X = X
+        self.y = y
         print("Training classifier with 5x5 CV...")
-        self.scores = self.classify(X, y)
+        self.scores_norm = self.classify(X, y, multiclass=False)
 
-        return self.scores
+        return self.scores_norm
 
 
 if __name__ == '__main__':
 
     dh = data_handling()
     dh.simulate()
+
+    _, p_val = scipy.stats.ttest_ind(dh.scores, dh.scores_norm)
+    print("Spectral Normalization improves classification accuracy by %0.2f percent on average; p_val = %0.2f" %((dh.scores_norm.mean() - dh.scores.mean())*100, p_val))
