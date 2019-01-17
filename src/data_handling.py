@@ -41,7 +41,7 @@ class data_handling:
         self.load_data()
 
         self.nperseg = 64
-        self.noverlap = 3*np.ceil(self.nperseg / 4)
+        self.noverlap = 3 * np.ceil(self.nperseg / 4)
         self.fmax = 50
 
     def load_data(self):
@@ -51,7 +51,7 @@ class data_handling:
         print("Loading dataset...")
         # Load the dataset
         subIDs, data, labels = dl.load_processed_data_N_subjects_allchans(
-            '../data_5sec_100Hz_bipolar/', Nsub=14)
+            '../../data_5sec_100Hz_bipolar/', Nsub=14)
 
         if len(data) > 1:
 
@@ -266,7 +266,7 @@ class data_handling:
 
         return X, y
 
-    def classify(self, X, y, multiclass=False):
+    def classify(self, X, y, multiclass=True):
         """
         Trains an SVM on the data with 5x5 cross-validation.
         """
@@ -327,8 +327,8 @@ class data_handling:
         X_null, y_null = self.generate_features(self.null_stft, 0)
         X_bckg, y_bckg = self.generate_features(self.bckg_stft, 0)
         X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft, 1)
-        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft, 1)
-        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft, 1)
+        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft, 2)
+        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft, 3)
 
 
         # Append the matrices
@@ -344,7 +344,7 @@ class data_handling:
         y = np.append(y, y_tcsz, axis=0)
 
         print("Training classifier with 5x5 CV...")
-        self.scores = self.classify(X, y, multiclass=False)
+        self.scores = self.classify(X, y, multiclass=True)
 
         # Vectorize this part of the code
         print("Normalizing data...")
@@ -365,8 +365,8 @@ class data_handling:
         X_null, y_null = self.generate_features(self.null_stft_norm, 0)
         X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
         X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
-        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 1)
-        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 1)
+        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 2)
+        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 3)
 
 
         # Append the matrices
@@ -384,7 +384,7 @@ class data_handling:
         self.X = X
         self.y = y
         print("Training classifier with 5x5 CV...")
-        self.scores_norm = self.classify(X, y, multiclass=False)
+        self.scores_norm = self.classify(X, y, multiclass=True)
 
         return self.scores_norm
 
