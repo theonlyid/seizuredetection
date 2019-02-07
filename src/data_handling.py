@@ -27,6 +27,7 @@ with warnings.catch_warnings():
     import multiprocessing
     from tqdm import tqdm
     import scipy.stats
+    from sklearn.manifold import TSNE
 
 
 class data_handling:
@@ -38,7 +39,7 @@ class data_handling:
 
     def __init__(self):
 
-        self.load_data()
+        # self.load_data()
 
         self.nperseg = 64
         self.noverlap = 3 * np.ceil(self.nperseg / 4)
@@ -51,7 +52,7 @@ class data_handling:
         print("Loading dataset...")
         # Load the dataset
         subIDs, data, labels = dl.load_processed_data_N_subjects_allchans(
-            '../../data_5sec_100Hz_bipolar/', Nsub=14)
+            '../data_5sec_100Hz_bipolar/', Nsub=10)
 
         if len(data) > 1:
 
@@ -65,8 +66,8 @@ class data_handling:
 
         else:
             # Remove the extra dimension at axis=0
-            data_array = np.squeeze(data)
-            labels = np.squeeze(labels)
+            data_arr = np.squeeze(data)
+            label_arr = np.squeeze(labels)
 
         # Move trials to the end so data array is 'nchan x timeseries x trials'
         self.data = np.moveaxis(data_arr, 1, -1)
@@ -222,7 +223,7 @@ class data_handling:
         plt.draw()
         plt.show()
 
-    def generate_features(self, data, y_label):
+    def generate_features(self, data, y_label, compress_data=True):
         """
         Generates feature vectors for feeding into SVM.
 
@@ -242,31 +243,95 @@ class data_handling:
         data_array = np.array([])
         # bl_array = np.array([])
 
-        for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
-            for tbin in range(data.shape[-2]):    # Each timebin
-                for ch in range(self.data.shape[0]):
-                    data_array = np.append(data_array,[
-                                            np.mean(data[ch,   :2, tbin, trial]),
-                                            np.mean(data[ch,  3:8, tbin, trial]),
-                                            np.mean(data[ch, 9:27, tbin, trial])])
+        if compress_data:
 
-        data_array = np.reshape(data_array, (-1, 18))
+            for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
+                for tbin in range(data.shape[-2]):    # Each timebin
+                    for ch in range(self.data.shape[0]):
+                        data_array = np.append(data_array, [
+                                                np.mean(data[ch,   :2, tbin, trial]),
+                                                np.mean(data[ch,  3:8, tbin, trial]),
+                                                np.mean(data[ch, 9:27, tbin, trial])])
 
-        # for trial in range(self.bl_stft_norm.shape[-1]):       # Each trial
-        #     for tbin in range(self.bl_stft_norm.shape[-2]):    # Each timebin
-        #         for ch in range(self.bl_stft_norm.shape[0]):
-        #             bl_array = np.append(bl_array, [
-        #                                     np.mean(self.bl_stft_norm[ch,   :2, tbin, trial]),
-        #                                     np.mean(self.bl_stft_norm[ch,  3:8, tbin, trial]),
-        #                                     np.mean(self.bl_stft_norm[ch, 9:27, tbin, trial])])
-        # bl_array = np.reshape(bl_array, (-1, 18))
+            data_array = np.log(np.reshape(data_array, (-1, 18)))
+
+        else:
+
+            for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
+                for tbin in range(data.shape[-2]):    # Each timebin
+                    for ch in range(self.data.shape[0]):
+                        data_array = np.append(data_array, [
+                                                data[ch, :10, tbin, trial]]),
+
+            data_array = np.log(np.reshape(data_array, (-1, 10*6)))
 
         X = data_array
         y = np.ones(data_array.shape[0])*y_label
 
         return X, y
 
-    def classify(self, X, y, multiclass=True):
+    def generate_dataset(self, normalize=True, multiclass=False):
+        idx_null = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 0] > 0]
+        idx_bckg = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 6] > 0]
+        np.random.shuffle(idx_bckg)
+        idx_bckg = idx_bckg[:800]
+        idx_gnsz = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 9] > 0]
+        idx_cpsz = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 11] > 0]
+        idx_tcsz = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 15] > 0]
+
+        # idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
+        # print("Using label {} as baseline".format(baseline_label))
+
+        if normalize:
+            print("Generating normalized dataset...")
+            norm = self.get_norm_array(self.data)
+            self.null_stft_norm, _ = self.get_stft(self.data[:, :, idx_null], norm)
+            self.bckg_stft_norm, _ = self.get_stft(self.data[:, :, idx_bckg], norm)
+            self.gnsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_gnsz], norm)
+            self.cpsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_cpsz], norm)
+            self.tcsz_stft_norm, f = self.get_stft(self.data[:, :, idx_tcsz], norm)
+
+        else:
+            print("Generating dataset...")
+            norm = self.get_norm_array(self.data)
+            self.null_stft_norm, _ = self.get_stft(self.data[:, :, idx_null], norm)
+            self.bckg_stft_norm, _ = self.get_stft(self.data[:, :, idx_bckg], norm)
+            self.gnsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_gnsz], norm)
+            self.cpsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_cpsz], norm)
+            self.tcsz_stft_norm, f = self.get_stft(self.data[:, :, idx_tcsz], norm)
+
+        if multiclass:
+            print("Generating training datasets for data...")
+            X_null, y_null = self.generate_features(self.null_stft_norm, 0)
+            X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 1)
+            X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 2)
+            X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 3)
+            X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 4)
+
+        else:
+            print("Generating training datasets for data...")
+            X_null, y_null = self.generate_features(self.null_stft_norm, 0)
+            X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
+            X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
+            X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 1)
+            X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 1)
+
+
+        # Append the matrices
+
+        X = np.append(X_null, X_bckg, axis=0)
+        X = np.append(X, X_gnsz, axis=0)
+        X = np.append(X, X_cpsz, axis=0)
+        X = np.append(X, X_tcsz, axis=0)
+
+        y = np.append(y_null, y_bckg, axis=0)
+        y = np.append(y, y_gnsz, axis=0)
+        y = np.append(y, y_cpsz, axis=0)
+        y = np.append(y, y_tcsz, axis=0)
+
+        return X, y
+
+    def classify(self, X, y, multiclass=True, return_classifer=False):
         """
         Trains an SVM on the data with 5x5 cross-validation.
         """
@@ -278,121 +343,49 @@ class data_handling:
 
             cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
             print("Training classifier on dataset")
-            scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
-            print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
+            scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores, verbose=True)
+            print("cross-validation accuracy: %0.2f (+/- %0.3f CI)" % (scores.mean(), scores.std()*2))
 
         else:
-            clf = svm.SVC(kernel='rbf', C=1, gamma='scale')
+            self.clf = svm.SVC(kernel='rbf', C=1, gamma='scale')
 
             cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
             print("Training classifier on dataset")
-            scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
-            print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
+            scores = cross_val_score(self.clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores, verbose=True)
+            print("cross-validation accuracy: %0.2f (+/- %0.3f CI)" % (scores.mean(), scores.std()*2))
 
-        # Use joblib and multiprocessing to make this part run over multiple cores
-        # print("Peforming train-test split with 0.2 test size")
-        # X_train, X_test, y_train, y_test = train_test_split(
-        #     X, y, test_size=0.2, random_state=42)
-        # clf.fit(X_train, y_train)
-        # #s = clf.score(X_test, y_test)
-        # yhat = clf.predict(X_test)
-        # s = balanced_accuracy_score(y_test, yhat)
-        # c = matthews_corrcoef(y_test, yhat)
-        # print("Matthews corr coef = %0.2f, balanced test score = %0.2f" %(c, s))
-
-        return scores
+        if return_classifer:
+            return clf
+        else:
+            return scores
 
     def simulate(self):
         """
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
         """
 
-        idx_null = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 0] > 0]
-        idx_bckg = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 6] > 0][:800]
-        idx_gnsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 9] > 0]
-        idx_cpsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 11] > 0]
-        idx_tcsz = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, 15] > 0]
-
-
-        # idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
-        # print("Using label {} as baseline".format(baseline_label))
-
-        self.null_stft, _ = self.get_stft(self.data[:, :, idx_null], normalize=False)
-        self.bckg_stft, _ = self.get_stft(self.data[:, :, idx_bckg], normalize=False)
-        self.gnsz_stft, _ = self.get_stft(self.data[:, :, idx_gnsz], normalize=False)
-        self.cpsz_stft, _ = self.get_stft(self.data[:, :, idx_cpsz], normalize=False)
-        self.tcsz_stft, _ = self.get_stft(self.data[:, :, idx_tcsz], normalize=False)
-
-        print("Generating training datasets for non-normalized data...")
-        X_null, y_null = self.generate_features(self.null_stft, 0)
-        X_bckg, y_bckg = self.generate_features(self.bckg_stft, 0)
-        X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft, 1)
-        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft, 2)
-        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft, 3)
-
-
-        # Append the matrices
-
-        X = np.append(X_null, X_bckg, axis=0)
-        X = np.append(X, X_gnsz, axis=0)
-        X = np.append(X, X_cpsz, axis=0)
-        X = np.append(X, X_tcsz, axis=0)
-
-        y = np.append(y_null, y_bckg, axis=0)
-        y = np.append(y, y_gnsz, axis=0)
-        y = np.append(y, y_cpsz, axis=0)
-        y = np.append(y, y_tcsz, axis=0)
+        self.X, self.y = self.generate_dataset(normalize=False, multiclass=False)
 
         print("Training classifier with 5x5 CV...")
-        self.scores = self.classify(X, y, multiclass=True)
+        self.scores = self.classify(self.X, self.y, multiclass=False)
 
-        # Vectorize this part of the code
-        print("Normalizing data...")
-        norm = self.get_norm_array(self.data)
-        self.null_stft_norm, _ = self.get_stft(self.data[:, :, idx_null], norm)
-        self.bckg_stft_norm, _ = self.get_stft(self.data[:, :, idx_bckg], norm)
-        self.gnsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_gnsz], norm)
-        self.cpsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_cpsz], norm)
-        self.tcsz_stft_norm, f = self.get_stft(self.data[:, :, idx_tcsz], norm)
+        self.X, self.y = self.generate_dataset(normalize=True, multiclass=False)
 
-        # band_tot, band_tot_bl2, f = self.get_bands(self.data_stft_norm, self.bl_stft_norm, f)
-
-        # print("Obtaining SNR...")
-        # snr = self.get_snr(band_tot, band_tot_bl2)
-        # self.plot_snr(snr)
-
-        print("Generating training datasets for normalized data...")
-        X_null, y_null = self.generate_features(self.null_stft_norm, 0)
-        X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
-        X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
-        X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 2)
-        X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 3)
-
-
-        # Append the matrices
-
-        X = np.append(X_null, X_bckg, axis=0)
-        X = np.append(X, X_gnsz, axis=0)
-        X = np.append(X, X_cpsz, axis=0)
-        X = np.append(X, X_tcsz, axis=0)
-
-        y = np.append(y_null, y_bckg, axis=0)
-        y = np.append(y, y_gnsz, axis=0)
-        y = np.append(y, y_cpsz, axis=0)
-        y = np.append(y, y_tcsz, axis=0)
-
-        self.X = X
-        self.y = y
         print("Training classifier with 5x5 CV...")
-        self.scores_norm = self.classify(X, y, multiclass=True)
+        self.scores_norm = self.classify(self.X, self.y, multiclass=False)
 
-        return self.scores_norm
+        print("Normalization increases accuracy by %0.3f /%" % ((self.scores_norm.mean() - self.scores_norm.mean())*100))
 
 
 if __name__ == '__main__':
 
     dh = data_handling()
+    dh.load_data()
     dh.simulate()
 
-    _, p_val = scipy.stats.ttest_ind(dh.scores, dh.scores_norm)
-    print("Spectral Normalization improves classification accuracy by %0.2f percent on average; p_val = %0.2f" %((dh.scores_norm.mean() - dh.scores.mean())*100, p_val))
+    # print("Remapping {} components to 2d space...".format(dh.X.shape[1]))
+    # x = TSNE(n_components=2, verbose=4).fit_transform(dh.X)
+
+    # plt.scatter(x[:, 0], x[:, 1], c=dh.y)
+    # plt.draw()
+    # plt.show()
