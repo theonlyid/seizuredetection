@@ -11,23 +11,27 @@ Date:   14.11.2018
 (c) All Rights Reserved
 """
 
-import warnings
 
+import warnings
 with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
+    warnings.filterwarnings("ignore")
+    from sklearn import svm
+    import time
     import numpy as np
     import data_loader as dl
     from itertools import compress
     import matplotlib.pyplot as plt
     from scipy import signal
-    from sklearn import svm
     from sklearn.svm import LinearSVC
     from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-    from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef
+    from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef, make_scorer
+    from sklearn.neural_network import MLPClassifier
     import multiprocessing
     from tqdm import tqdm
     import scipy.stats
     from sklearn.manifold import TSNE
+    from memory_profiler import profile
+    import sys
 
 
 class data_handling:
@@ -52,7 +56,7 @@ class data_handling:
         print("Loading dataset...")
         # Load the dataset
         subIDs, data, labels = dl.load_processed_data_N_subjects_allchans(
-            '../data_5sec_100Hz_bipolar/', Nsub=10)
+            '../data_5sec_100Hz_bipolar/', Nsub=14)
 
         if len(data) > 1:
 
@@ -247,11 +251,11 @@ class data_handling:
 
             for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
                 for tbin in range(data.shape[-2]):    # Each timebin
-                    for ch in range(self.data.shape[0]):
-                        data_array = np.append(data_array, [
-                                                np.mean(data[ch,   :2, tbin, trial]),
-                                                np.mean(data[ch,  3:8, tbin, trial]),
-                                                np.mean(data[ch, 9:27, tbin, trial])])
+                    data_array = np.append(
+                        data_array, [
+                            np.mean(data[:,   :2, tbin, trial], 1).ravel(),
+                            np.mean(data[:,  3:8, tbin, trial], 1).ravel(),
+                            np.mean(data[:, 9:27, tbin, trial], 1).ravel()])
 
             data_array = np.log(np.reshape(data_array, (-1, 18)))
 
@@ -259,11 +263,10 @@ class data_handling:
 
             for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
                 for tbin in range(data.shape[-2]):    # Each timebin
-                    for ch in range(self.data.shape[0]):
-                        data_array = np.append(data_array, [
-                                                data[ch, :10, tbin, trial]]),
+                    data_array = np.append(data_array,
+                                           [data[:, :27, tbin, trial].ravel()])
 
-            data_array = np.log(np.reshape(data_array, (-1, 10*6)))
+            data_array = np.log(np.reshape(data_array, (-1, 27*6)))
 
         X = data_array
         y = np.ones(data_array.shape[0])*y_label
@@ -271,13 +274,13 @@ class data_handling:
         return X, y
 
     def generate_dataset(self, normalize=True, multiclass=False):
-        idx_null = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 0] > 0]
-        idx_bckg = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 6] > 0]
+        idx_null = [idx for idx in range(self.labels.shape[0])if self.labels[idx, 0] > 0]
+        idx_bckg = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 6] > 0]
         np.random.shuffle(idx_bckg)
         idx_bckg = idx_bckg[:800]
-        idx_gnsz = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 9] > 0]
-        idx_cpsz = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 11] > 0]
-        idx_tcsz = [idx for idx in range(dh.labels.shape[0]) if self.labels[idx, 15] > 0]
+        idx_gnsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 9] > 0]
+        idx_cpsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 11] > 0]
+        idx_tcsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 15] > 0]
 
         # idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
         # print("Using label {} as baseline".format(baseline_label))
@@ -309,16 +312,14 @@ class data_handling:
             X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 4)
 
         else:
-            print("Generating training datasets for data...")
+            print("Generating training datasets for data...\n")
             X_null, y_null = self.generate_features(self.null_stft_norm, 0)
             X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
             X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
             X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 1)
             X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 1)
 
-
         # Append the matrices
-
         X = np.append(X_null, X_bckg, axis=0)
         X = np.append(X, X_gnsz, axis=0)
         X = np.append(X, X_cpsz, axis=0)
@@ -331,50 +332,143 @@ class data_handling:
 
         return X, y
 
-    def classify(self, X, y, multiclass=True, return_classifer=False):
+    def generateFullFeatures(self):
+        idx_null = [idx for idx in range(self.labels.shape[0])if self.labels[idx, 0] > 0]
+        idx_bckg = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 6] > 0]
+        np.random.shuffle(idx_bckg)
+        idx_bckg = idx_bckg[:800]
+        idx_gnsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 9] > 0]
+        idx_cpsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 11] > 0]
+        idx_tcsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 15] > 0]
+
+        X_full = np.append(self.data[:, :, idx_null].ravel(), self.data[:, :, idx_bckg].ravel(), axis=0)
+        X_full = np.append(X_full, self.data[:, :, idx_gnsz].ravel(), axis=0)
+        X_full = np.append(X_full, self.data[:, :, idx_cpsz].ravel(), axis=0)
+        X_full = np.append(X_full, self.data[:, :, idx_tcsz].ravel(), axis=0)
+
+        X_full = np.reshape(X_full, (-1, 3000))
+
+        y_full = np.append(
+            np.zeros((len(idx_null)+len(idx_bckg),), dtype=np.int64),
+            np.ones((len(idx_gnsz)+len(idx_cpsz)+len(idx_tcsz),), dtype=np.int64))
+
+        return X_full, y_full
+
+    def timerfunc(func):
         """
-        Trains an SVM on the data with 5x5 cross-validation.
+        A timer decorator
+        """
+        def function_timer(*args, **kwargs):
+            """
+            A nested function for timing other functions
+            """
+            start = time.time()
+            value = func(*args, **kwargs)
+            end = time.time()
+            runtime = end - start
+            msg = "The runtime for {func} took {time} seconds to complete"
+            print(msg.format(func=func.__name__,
+                             time=runtime))
+            return value
+        return function_timer
+
+    @timerfunc
+    def classifySVM(self, X, y, return_classifer=False):
+        """
+        Trains an SVM on the data.
         """
 
         cores = multiprocessing.cpu_count()
 
-        if multiclass:
-            clf = svm.SVC(kernel='linear', C=1, gamma='scale')
+        clf = svm.SVC(kernel='rbf', C=1, gamma='scale')
+        # scorer = make_scorer(matthews_corrcoef)
 
-            cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
-            print("Training classifier on dataset")
-            scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores, verbose=True)
-            print("cross-validation accuracy: %0.2f (+/- %0.3f CI)" % (scores.mean(), scores.std()*2))
+        cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
+        print("\n\n Training svm on dataset")
+        scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
+        print("\n\n cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
 
+        return scores, clf
+
+    @timerfunc
+    def classifyMLP(self, X, y, scale_units=False):
+        """
+        Trains a MLP on the data
+        """
+
+        if scale_units:
+            n_features = 2 * X.shape[1]
         else:
-            self.clf = svm.SVC(kernel='rbf', C=1, gamma='scale')
+            n_features = 50
 
-            cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
-            print("Training classifier on dataset")
-            scores = cross_val_score(self.clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores, verbose=True)
-            print("cross-validation accuracy: %0.2f (+/- %0.3f CI)" % (scores.mean(), scores.std()*2))
+        print("\n\nTraining neural network on dataset")
 
-        if return_classifer:
-            return clf
-        else:
-            return scores
+        scores = np.array([])
+        for k in range(5):
+
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2)
+
+            mlp = MLPClassifier(
+                hidden_layer_sizes=(n_features, 2*n_features, n_features), alpha=1e-4,
+                solver='sgd', verbose=0, tol=1e-4, random_state=1,
+                learning_rate_init=.1, max_iter=200)
+
+            mlp.fit(X_train, y_train)
+            y_pred = mlp.predict(X_test)
+            scores = np.append(scores, matthews_corrcoef(y_pred, y_test))
+
+        print("\n\n ncross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
+        return scores, mlp
 
     def simulate(self):
         """
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
         """
 
+        fig, axes = plt.subplots(3, 2)
+
+        for ax, ch in zip(axes.ravel(), range(6)):
+            plt.subplot(ax)
+            plt.plot(self.data[ch, :, 0])
+
+        print("Figure generated.\n")
+
+        input("Press any key to continue...")
+
+        plt.show()
+
+        # Train a multilayer perceptron on the dataset
+        self.X_full, self.y_full = self.generateFullFeatures()
+        X_train, X_test, y_train, y_test = train_test_split(
+            self.X_full, self.y_full, test_size=0.2)
+        self.scores_svm_full, self.clf_full = self.classifySVM(self.X_full, self.y_full)
+
+        try:
+            self.scores_mlp_full, self.mlp_full = self.classifyMLP(self.X_full, self.y_full)
+            print("\n\nTraining accuracy reported by neural net = %0.2f" % (self.mlp_full.score(X_train, y_train)))
+            print("\n\nTest accuracy = %0.2f" % (self.mlp_full.score(X_test, y_test)))
+            self.y_pred_full = self.mlp_full.predict(X_test)
+
+
+        except MemoryError as e:
+            print("Out of Memory! Dataset too large!")
+            sys.exit()
+
+        else:
+            pass
+        finally:
+            pass
+
+        # Too good to be true?
+
+
+
         self.X, self.y = self.generate_dataset(normalize=False, multiclass=False)
+        self.scores_svm_less, self.clf_less = self.classifySVM(self.X, self.y)
+        self.scores_mlp_less, self.mlp_less = self.classifyMLP(self.X, self.y)
 
-        print("Training classifier with 5x5 CV...")
-        self.scores = self.classify(self.X, self.y, multiclass=False)
-
-        self.X, self.y = self.generate_dataset(normalize=True, multiclass=False)
-
-        print("Training classifier with 5x5 CV...")
-        self.scores_norm = self.classify(self.X, self.y, multiclass=False)
-
-        print("Normalization increases accuracy by %0.3f /%" % ((self.scores_norm.mean() - self.scores_norm.mean())*100))
+        # print("Balanced accuracy for svm: %0.1f%%, mlp: %0.1f%%" % (self.scores_svm*100, self.scores_mlp*100))
 
 
 if __name__ == '__main__':
@@ -382,10 +476,3 @@ if __name__ == '__main__':
     dh = data_handling()
     dh.load_data()
     dh.simulate()
-
-    # print("Remapping {} components to 2d space...".format(dh.X.shape[1]))
-    # x = TSNE(n_components=2, verbose=4).fit_transform(dh.X)
-
-    # plt.scatter(x[:, 0], x[:, 1], c=dh.y)
-    # plt.draw()
-    # plt.show()
