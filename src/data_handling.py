@@ -28,6 +28,7 @@ import multiprocessing
 import scipy.stats
 from sklearn.manifold import TSNE
 import sys
+import tqdm
 
 
 class data_handling:
@@ -245,7 +246,7 @@ class data_handling:
 
         if compress_data:
 
-            for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
+            for trial in range(data.shape[-1]):
                 for tbin in range(data.shape[-2]):    # Each timebin
                     data_array = np.append(
                         data_array, [
@@ -257,7 +258,7 @@ class data_handling:
 
         else:
 
-            for trial in tqdm(range(data.shape[-1]), ncols=100, desc='Generating matrix for label {0}'.format(y_label)):       # Each trial
+            for trial in range(data.shape[-1]):       # Each trial
                 for tbin in range(data.shape[-2]):    # Each timebin
                     data_array = np.append(data_array,
                                            [data[:, :27, tbin, trial].ravel()])
@@ -352,7 +353,7 @@ class data_handling:
 
     def timerfunc(func):
         """
-        A timer decorator
+        A timer decorator to assess time taken by different classifiers.
         """
         def function_timer(*args, **kwargs):
             """
@@ -422,17 +423,17 @@ class data_handling:
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
         """
 
-        fig, axes = plt.subplots(3, 2)
+        # fig, axes = plt.subplots(3, 2)
 
-        for ax, ch in zip(axes.ravel(), range(6)):
-            plt.subplot(ax)
-            plt.plot(self.data[ch, :, 0])
+        # for ax, ch in zip(axes.ravel(), range(6)):
+        #     plt.subplot(ax)
+        #     plt.plot(self.data[ch, :, 0])
 
-        print("Figure generated.\n")
+        # print("Figure generated.\n")
 
-        input("Press any key to continue...")
+        # input("Press any key to continue...")
 
-        plt.show()
+        # plt.show()
 
         # Train a multilayer perceptron on the dataset
         self.X_full, self.y_full = self.generateFullFeatures()
