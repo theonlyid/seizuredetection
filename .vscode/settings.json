@@ -1,0 +1,7 @@
+{
+    "python.pythonPath": "/Users/alizaidi/miniconda/envs/ds/bin/python",
+    "python.linting.pylintEnabled": true,
+    "python.linting.pydocstyleEnabled": false,
+    "python.linting.enabled": true,
+    "python.dataScience.changeDirOnImportExport": false
+}

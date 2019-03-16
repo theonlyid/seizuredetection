@@ -12,26 +12,22 @@ Date:   14.11.2018
 """
 
 
-import warnings
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore")
-    from sklearn import svm
-    import time
-    import numpy as np
-    import data_loader as dl
-    from itertools import compress
-    import matplotlib.pyplot as plt
-    from scipy import signal
-    from sklearn.svm import LinearSVC
-    from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-    from sklearn.metrics import balanced_accuracy_score, matthews_corrcoef, make_scorer
-    from sklearn.neural_network import MLPClassifier
-    import multiprocessing
-    from tqdm import tqdm
-    import scipy.stats
-    from sklearn.manifold import TSNE
-    from memory_profiler import profile
-    import sys
+
+from sklearn import svm
+import src.data_loader as dl
+import time
+import numpy as np
+from itertools import compress
+import matplotlib.pyplot as plt
+from scipy import signal
+from sklearn.svm import LinearSVC
+from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
+from sklearn.metrics import matthews_corrcoef, make_scorer
+from sklearn.neural_network import MLPClassifier
+import multiprocessing
+import scipy.stats
+from sklearn.manifold import TSNE
+import sys
 
 
 class data_handling:
