@@ -1,3 +1,6 @@
 __pycache__
 src/todo.txt
-DS_
+DS_*
+*.pyc
+.vscode
+tempCodeRunnerFile.py
