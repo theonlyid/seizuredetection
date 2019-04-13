@@ -12,7 +12,6 @@ Date:   14.11.2018
 """
 
 
-
 from sklearn import svm
 import src.data_loader as dl
 import time
@@ -28,7 +27,6 @@ import multiprocessing
 import scipy.stats
 from sklearn.manifold import TSNE
 import sys
-import tqdm
 
 
 class data_handling:
@@ -53,7 +51,7 @@ class data_handling:
         print("Loading dataset...")
         # Load the dataset
         subIDs, data, labels = dl.load_processed_data_N_subjects_allchans(
-            '../data_5sec_100Hz_bipolar/', Nsub=14)
+            '../../../data/data_5sec_100Hz_bipolar/', Nsub=14)
 
         if len(data) > 1:
 
@@ -415,7 +413,7 @@ class data_handling:
             y_pred = mlp.predict(X_test)
             scores = np.append(scores, matthews_corrcoef(y_pred, y_test))
 
-        print("\n\n ncross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
+        print("\n \nncross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
         return scores, mlp
 
     def simulate(self):
@@ -461,7 +459,7 @@ class data_handling:
 
 
 
-        self.X, self.y = self.generate_dataset(normalize=False, multiclass=False)
+        self.X, self.y = self.generate_dataset(normalize=True, multiclass=False)
         self.scores_svm_less, self.clf_less = self.classifySVM(self.X, self.y)
         self.scores_mlp_less, self.mlp_less = self.classifyMLP(self.X, self.y)
 
