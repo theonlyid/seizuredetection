@@ -3,4 +3,7 @@ src/todo.txt
 DS_*
 *.pyc
 .vscode
-tempCodeRunnerFile.py
+*/*tempCodeRunnerFile.py
+docs/*checkpoint*
+src/*temp*
+.vscode
