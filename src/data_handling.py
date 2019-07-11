@@ -11,22 +11,19 @@ Date:   14.11.2018
 (c) All Rights Reserved
 """
 
-
-from sklearn import svm
+from __future__ import print_function, absolute_import
 import src.data_loader as dl
 import time
 import numpy as np
-from itertools import compress
 import matplotlib.pyplot as plt
 from scipy import signal
-from sklearn.svm import LinearSVC
+from sklearn.svm import SVC
 from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-from sklearn.metrics import matthews_corrcoef, make_scorer
+from sklearn.metrics import matthews_corrcoef, balanced_accuracy_score
 from sklearn.neural_network import MLPClassifier
-import multiprocessing
-import scipy.stats
 from sklearn.manifold import TSNE
 import sys
+import multiprocessing
 
 
 class data_handling:
@@ -51,7 +48,7 @@ class data_handling:
         print("Loading dataset...")
         # Load the dataset
         subIDs, data, labels = dl.load_processed_data_N_subjects_allchans(
-            '../../../data/data_5sec_100Hz_bipolar/', Nsub=14)
+            'data/', Nsub=14)
 
         if len(data) > 1:
 
@@ -109,7 +106,7 @@ class data_handling:
 
     def get_norm_array(self, data):
         """
-        Performs a STFT on the entire dataset to get mean spectrogram across trials.
+        Performs a STFT on the entire dataset to get mean power for each frequency across trials.
         This is used to normailze the data and baseline arrays for feature extraction.
         """
 
@@ -129,7 +126,7 @@ class data_handling:
 
     def get_stft(self, data_array, norm_array=[], normalize=True):
         """
-        This is where the magic happens!
+        
         """
 
         # Calculate the short-time fourrier transform
@@ -222,7 +219,7 @@ class data_handling:
         plt.draw()
         plt.show()
 
-    def generate_features(self, data, y_label, compress_data=True):
+    def generate_features(self, data, y_label, compress_data=True, log_transform=True):
         """
         Generates feature vectors for feeding into SVM.
 
@@ -252,7 +249,10 @@ class data_handling:
                             np.mean(data[:,  3:8, tbin, trial], 1).ravel(),
                             np.mean(data[:, 9:27, tbin, trial], 1).ravel()])
 
-            data_array = np.log(np.reshape(data_array, (-1, 18)))
+            if log_transform:
+                data_array = np.log(np.reshape(data_array, (-1, 18)))
+            else:
+                data_array = np.reshape(data_array, (-1, 18))
 
         else:
 
@@ -267,6 +267,9 @@ class data_handling:
         y = np.ones(data_array.shape[0])*y_label
 
         return X, y
+
+    def visualize_data(self):
+        signal.butter()
 
     def generate_dataset(self, normalize=True, multiclass=False):
         idx_null = [idx for idx in range(self.labels.shape[0])if self.labels[idx, 0] > 0]
@@ -301,10 +304,10 @@ class data_handling:
         if multiclass:
             print("Generating training datasets for data...")
             X_null, y_null = self.generate_features(self.null_stft_norm, 0)
-            X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 1)
-            X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 2)
-            X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 3)
-            X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 4)
+            X_bckg, y_bckg = self.generate_features(self.bckg_stft_norm, 0)
+            X_gnsz, y_gnsz = self.generate_features(self.gnsz_stft_norm, 1)
+            X_cpsz, y_cpsz = self.generate_features(self.cpsz_stft_norm, 2)
+            X_tcsz, y_tcsz = self.generate_features(self.tcsz_stft_norm, 3)
 
         else:
             print("Generating training datasets for data...\n")
@@ -325,7 +328,16 @@ class data_handling:
         y = np.append(y, y_cpsz, axis=0)
         y = np.append(y, y_tcsz, axis=0)
 
-        return X, y
+
+        ds = np.empty((X.shape[0], X.shape[1]+1));
+        ds[:,:-1] = X
+        ds[:,-1] = y
+
+        np.random.seed(42)
+
+        np.random.shuffle(ds)
+
+        return ds[:,:-1], ds[:,-1].astype(int)
 
     def generateFullFeatures(self):
         idx_null = [idx for idx in range(self.labels.shape[0])if self.labels[idx, 0] > 0]
@@ -375,13 +387,15 @@ class data_handling:
 
         cores = multiprocessing.cpu_count()
 
-        clf = svm.SVC(kernel='rbf', C=1, gamma='scale')
-        # scorer = make_scorer(matthews_corrcoef)
-
+        clf = SVC(C=1.0, cache_size=200, class_weight='balanced', coef0=0.0,
+            decision_function_shape='ovr', degree=3, gamma='scale',
+            kernel='rbf', max_iter=-1, probability=True, random_state=42,
+            shrinking=True, tol=0.001, verbose=0)
+        
         cv = StratifiedKFold(n_splits=5, random_state=42, shuffle=True)
-        print("\n\n Training svm on dataset")
+        print("Performing 5x5 cross-validation on dataset")
         scores = cross_val_score(clf, X, y, cv=cv, scoring='balanced_accuracy', n_jobs=cores)
-        print("\n\n cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
+        print("cross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
 
         return scores, clf
 
@@ -421,47 +435,10 @@ class data_handling:
         Runs a simulation of the data processing pipeline. This demonstrates the processflow.
         """
 
-        # fig, axes = plt.subplots(3, 2)
-
-        # for ax, ch in zip(axes.ravel(), range(6)):
-        #     plt.subplot(ax)
-        #     plt.plot(self.data[ch, :, 0])
-
-        # print("Figure generated.\n")
-
-        # input("Press any key to continue...")
-
-        # plt.show()
-
-        # Train a multilayer perceptron on the dataset
-        self.X_full, self.y_full = self.generateFullFeatures()
-        X_train, X_test, y_train, y_test = train_test_split(
-            self.X_full, self.y_full, test_size=0.2)
-        self.scores_svm_full, self.clf_full = self.classifySVM(self.X_full, self.y_full)
-
-        try:
-            self.scores_mlp_full, self.mlp_full = self.classifyMLP(self.X_full, self.y_full)
-            print("\n\nTraining accuracy reported by neural net = %0.2f" % (self.mlp_full.score(X_train, y_train)))
-            print("\n\nTest accuracy = %0.2f" % (self.mlp_full.score(X_test, y_test)))
-            self.y_pred_full = self.mlp_full.predict(X_test)
-
-
-        except MemoryError as e:
-            print("Out of Memory! Dataset too large!")
-            sys.exit()
-
-        else:
-            pass
-        finally:
-            pass
-
-        # Too good to be true?
-
-
-
+        self.load_data()
         self.X, self.y = self.generate_dataset(normalize=True, multiclass=False)
         self.scores_svm_less, self.clf_less = self.classifySVM(self.X, self.y)
-        self.scores_mlp_less, self.mlp_less = self.classifyMLP(self.X, self.y)
+        # self.scores_mlp_less, self.mlp_less = self.classifyMLP(self.X, self.y)
 
         # print("Balanced accuracy for svm: %0.1f%%, mlp: %0.1f%%" % (self.scores_svm*100, self.scores_mlp*100))
 
@@ -469,5 +446,4 @@ class data_handling:
 if __name__ == '__main__':
 
     dh = data_handling()
-    dh.load_data()
     dh.simulate()

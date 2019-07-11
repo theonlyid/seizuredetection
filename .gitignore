@@ -7,3 +7,6 @@ DS_*
 docs/*checkpoint*
 src/*temp*
 .vscode
+/data
+/tmp
+*.ipynb*
