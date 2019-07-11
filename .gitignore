@@ -9,4 +9,4 @@ src/*temp*
 .vscode
 /data
 /tmp
-*.ipynb*
+*.ipynb_check*
