@@ -285,7 +285,7 @@ class data_handling:
 
         if normalize:
             print("Generating normalized dataset...")
-            norm = self.get_norm_array(self.data)
+            self.norm = self.get_norm_array(self.data)
             self.null_stft_norm, _ = self.get_stft(self.data[:, :, idx_null], norm)
             self.bckg_stft_norm, _ = self.get_stft(self.data[:, :, idx_bckg], norm)
             self.gnsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_gnsz], norm)
@@ -333,9 +333,6 @@ class data_handling:
         ds[:,:-1] = X
         ds[:,-1] = y
 
-        np.random.seed(42)
-
-        np.random.shuffle(ds)
 
         return ds[:,:-1], ds[:,-1].astype(int)
 
@@ -384,6 +381,10 @@ class data_handling:
         """
         Trains an SVM on the data.
         """
+
+        ds = np.append(X, y, axis=1)
+        np.random.seed(42)
+        np.random.shuffle(ds)
 
         cores = multiprocessing.cpu_count()
 
