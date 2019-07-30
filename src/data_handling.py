@@ -268,6 +268,57 @@ class data_handling:
 
         return X, y
 
+    def generate_features_from_snr(self, data, y_label, compress_data=True, log_transform=True):
+        """
+        Generates feature vectors for feeding into SVM.
+
+        Currently, that means taking the mean power in three frequency ranges:
+        (0 - 3 Hz, 3 - 12 Hz, 12 - 30 Hz) generating 18 in all (nchans = 6)
+
+        Inputs:
+            data_array: array with shape nchan x f x tbin x trials (see get_norm_array())
+            y_label     label to be given (used to generate vector y)
+
+        Returns:
+            X:  Array of features x trials (different from number of epochs)
+            y:  vector with class label
+        """
+
+        # For each STFT timebin, divide data into three bins and get mean power
+        data_array = np.array([])
+        # bl_array = np.array([])
+
+        if compress_data:
+
+            for trial in range(data.shape[-1]):
+                for tbin in range(data.shape[-2]):    # Each timebin
+                    data_array = np.append(
+                        data_array, [
+                            np.mean(data[:,   :2, tbin, trial], 1).ravel(),
+                            np.mean(data[:,  2:9, tbin, trial], 1).ravel(),
+                            np.mean(data[:, 10:20, tbin, trial], 1).ravel(),
+                            np.mean(data[:, 20:30, tbin, trial], 1).ravel(),
+                            np.mean(data[:, 26:,   tbin, trial], 1).ravel()])
+
+            if log_transform:
+                data_array = np.log(np.reshape(data_array, (-1, 30)))
+            else:
+                data_array = np.reshape(data_array, (-1, 30))
+
+        else:
+
+            for trial in range(data.shape[-1]):       # Each trial
+                for tbin in range(data.shape[-2]):    # Each timebin
+                    data_array = np.append(data_array,
+                                           [data[:, :27, tbin, trial].ravel()])
+
+            data_array = np.log(np.reshape(data_array, (-1, 27*6)))
+
+        X = data_array
+        y = np.ones(data_array.shape[0])*y_label
+
+        return X, y
+
     def visualize_data(self):
         signal.butter()
 
@@ -285,7 +336,7 @@ class data_handling:
 
         if normalize:
             print("Generating normalized dataset...")
-            self.norm = self.get_norm_array(self.data)
+            norm = self.get_norm_array(self.data)
             self.null_stft_norm, _ = self.get_stft(self.data[:, :, idx_null], norm)
             self.bckg_stft_norm, _ = self.get_stft(self.data[:, :, idx_bckg], norm)
             self.gnsz_stft_norm, _ = self.get_stft(self.data[:, :, idx_gnsz], norm)
