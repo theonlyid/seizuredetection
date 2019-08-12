@@ -19,11 +19,11 @@ import matplotlib.pyplot as plt
 from scipy import signal
 from sklearn.svm import SVC
 from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-from sklearn.metrics import matthews_corrcoef, balanced_accuracy_score
+from sklearn.metrics import matthews_corrcoef, balanced_accuracy_score, f1_score, confusion_matrix
 from sklearn.neural_network import MLPClassifier
 from sklearn.manifold import TSNE
-import sys
 import multiprocessing
+from scipy.ndimage import maximum_filter, generate_binary_structure
 
 
 class data_handling:
@@ -86,7 +86,7 @@ class data_handling:
         """
 
         blabel = [bool(x) for x in index_list]
-        blabel_string = list(compress(self.label_strings, blabel))
+        blabel_string = list(np.squeeze(self.label_strings, blabel))
 
         return blabel_string
 
@@ -195,6 +195,19 @@ class data_handling:
 
         return snr2
 
+    # TODO: Finish method to automatically find optimal bands from STFT frames
+    # =============================================================================
+    def get_snr_maxima(self, snr):
+        """
+        This function returns the local maxima (in a 2x2 grid) from the SNR matrix
+        """
+
+        neighborhood = generate_binary_structure(2,2)
+        snr_maxima = maximum_filter(snr, neighborhood = neighborhood) == snr
+
+    # =============================================================================
+
+
     def butter_filter(self, data, low_pass, high_pass, fs, order=10):
         """
         Generates a 10th order butterworth filter and performs filtfilt on the signal.
@@ -246,7 +259,7 @@ class data_handling:
                     data_array = np.append(
                         data_array, [
                             np.mean(data[:,   :2, tbin, trial], 1).ravel(),
-                            np.mean(data[:,  3:8, tbin, trial], 1).ravel(),
+                            np.mean(data[:,  3:9, tbin, trial], 1).ravel(),
                             np.mean(data[:, 9:27, tbin, trial], 1).ravel()])
 
             if log_transform:
@@ -296,9 +309,9 @@ class data_handling:
                         data_array, [
                             np.mean(data[:,   :2, tbin, trial], 1).ravel(),
                             np.mean(data[:,  2:9, tbin, trial], 1).ravel(),
-                            np.mean(data[:, 10:20, tbin, trial], 1).ravel(),
+                            np.mean(data[:, 9:20, tbin, trial], 1).ravel(),
                             np.mean(data[:, 20:30, tbin, trial], 1).ravel(),
-                            np.mean(data[:, 26:,   tbin, trial], 1).ravel()])
+                            np.mean(data[:, 30:,   tbin, trial], 1).ravel()])
 
             if log_transform:
                 data_array = np.log(np.reshape(data_array, (-1, 30)))
@@ -330,9 +343,6 @@ class data_handling:
         idx_gnsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 9] > 0]
         idx_cpsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 11] > 0]
         idx_tcsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 15] > 0]
-
-        # idx_bl = [idx for idx in range(dh.labels.shape[0]) if dh.labels[idx, baseline_label] > 0]
-        # print("Using label {} as baseline".format(baseline_label))
 
         if normalize:
             print("Generating normalized dataset...")
@@ -482,17 +492,138 @@ class data_handling:
         print("\n \nncross-validation accuracy: %0.2f (+/- %0.2f CI)" % (scores.mean(), scores.std()*2))
         return scores, mlp
 
+    def predict_epoch(self, epoch, clf, norm):
+        epoch_stft_norm, _ = self.get_stft(epoch[:,:,np.newaxis], norm)
+        x, _ = self.generate_features(epoch_stft_norm, 0)
+
+        y_pred = clf.predict(x)
+
+        return np.median(y_pred).astype(int)
+
+    def plot_confusion_matrix(self, cm, normalize=True):
+        """
+        This function prints and plots the confusion matrix.
+        Normalization can be applied by setting `normalize=True`.
+        """
+        classes=list(np.arange(4))
+        fig, ax = plt.subplots()
+        im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+        ax.figure.colorbar(im, ax=ax)
+        # We want to show all ticks...
+        ax.set(xticks=np.arange(cm.shape[1]),
+               yticks=np.arange(cm.shape[0]),
+               # ... and label them with the respective list entries
+               title='Normalized confusion matrix',
+               ylabel='True label',
+               xlabel='Predicted label')
+        ax.set(ylim = [-0.5, 3.5])
+        # Loop over data dimensions and create text annotations.
+        fmt = '.2f' if normalize else 'd'
+        thresh = cm.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], fmt),
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+        ax.set(ylim=[-0.5, 3.5], xlim=[-0.5,3.5])
+        fig.tight_layout()
+        return ax
+
     def simulate(self):
         """
-        Runs a simulation of the data processing pipeline. This demonstrates the processflow.
+        Runs a simulation of the data processing and classification  pipeline.
         """
 
+        # Load the data
         self.load_data()
-        self.X, self.y = self.generate_dataset(normalize=True, multiclass=False)
-        self.scores_svm_less, self.clf_less = self.classifySVM(self.X, self.y)
-        # self.scores_mlp_less, self.mlp_less = self.classifyMLP(self.X, self.y)
 
-        # print("Balanced accuracy for svm: %0.1f%%, mlp: %0.1f%%" % (self.scores_svm*100, self.scores_mlp*100))
+        # Make epochs the first axis to feed to train_test_split()
+        data = np.moveaxis(self.data, -1, 0)
+
+        # Init SVM object
+        clf = SVC(C=1.0, cache_size=200, class_weight='balanced', coef0=0.0,
+          decision_function_shape='ovr', degree=3, gamma='scale', kernel='rbf',
+          max_iter=-1, probability=True, random_state=42, shrinking=True, tol=0.001,
+          verbose=0)
+
+        # Create integer labels for data classes
+        y_labels = np.empty((self.labels.shape[0], 1))
+        idx_null = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 0] > 0]
+        idx_bckg = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 6] > 0]
+        idx_gnsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 9] > 0]
+        idx_cpsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 11] > 0]
+        idx_tcsz = [idx for idx in range(self.labels.shape[0]) if self.labels[idx, 15] > 0]
+        y_labels[idx_null] = 0
+        y_labels[idx_bckg] = 0
+        y_labels[idx_gnsz] = 1
+        y_labels[idx_cpsz] = 2
+        y_labels[idx_tcsz] = 3
+
+        # Initialize variables for epoch-level cross-validation
+        n_cv = 5
+        f1score = np.empty((n_cv,))
+        scores = np.empty((n_cv,))
+        cc = np.empty((4,4,n_cv))
+
+        for cv in range(n_cv):
+            print("\n\nRunning CV-fold {} out of {}".format(cv+1, n_cv))
+            X_train, X_test, y_train, y_test = train_test_split(data, y_labels, stratify=y_labels, test_size=0.2, random_state=42*cv)
+        
+            X_train = np.moveaxis(X_train, 0, -1 )
+        
+            norm = self.get_norm_array(X_train)
+        
+            X_train_stft, _ = self.get_stft(X_train, norm_array=norm)
+        
+            idx_0 = [idx for idx in range(len(y_train)) if y_train[idx]==0]
+            idx_1 = [idx for idx in range(len(y_train)) if y_train[idx]==1]
+            idx_2 = [idx for idx in range(len(y_train)) if y_train[idx]==2]
+            idx_3 = [idx for idx in range(len(y_train)) if y_train[idx]==3]
+            
+            print("Generating features...")
+            # Note that for Label-0 we are using Reduced number of epochs to facilitate faster execution times
+            X_0, y_0 = self.generate_features(X_train_stft[:,:,:,idx_0[:len(idx_1)+len(idx_2)+len(idx_3)]], 0)
+            X_1, y_1 = self.generate_features(X_train_stft[:,:,:,idx_1], 1)
+            X_2, y_2 = self.generate_features(X_train_stft[:,:,:,idx_2], 2)
+            X_3, y_3 = self.generate_features(X_train_stft[:,:,:,idx_3], 3)
+        
+            X = np.append(X_0, X_1, axis=0)
+            X = np.append(X, X_2, axis=0)
+            X = np.append(X, X_3, axis=0)
+        
+            y = np.append(y_0, y_1, axis=0)
+            y = np.append(y, y_2, axis=0)
+            y = np.append(y, y_3, axis=0)
+        
+            ds = np.empty((X.shape[0], X.shape[1]+1));
+            ds[:,:-1] = X
+            ds[:,-1] = y
+        
+            np.random.shuffle(ds)
+            
+            print("Training classifier...")
+            clf.fit(ds[:,:-1], ds[:,-1])
+        
+            X_test = np.moveaxis(X_test, 0, -1)
+        
+            y_pred = np.empty((len(y_test),1))
+            for i in range(len(y_test)):
+                y_pred[i] = self.predict_epoch(X_test[:,:,i], clf, norm)
+        
+        
+            scores[cv] = balanced_accuracy_score(y_test, y_pred)
+        
+            cc[:,:,cv] = confusion_matrix(y_test, y_pred)
+            
+            f1score[cv] = f1_score(y_test, y_pred, average='weighted')
+        
+        print("mean F1 scores are %0.3f +/- %0.3f" %(f1score.mean(), f1score.std()))
+        print("mean balanced-accuracy scores are %0.3f +/- %0.3f" %(scores.mean(), scores.std()))
+
+        # Generate the average confusion matrix and draw the plot
+        CV = np.sum(cc, axis=-1)
+        CV1 = CV/np.sum(CV, axis=1)[:,np.newaxis]
+        self.plot_confusion_matrix(CV1)
 
 
 if __name__ == '__main__':
