@@ -205,6 +205,17 @@ class data_handling:
         neighborhood = generate_binary_structure(2,2)
         snr_maxima = maximum_filter(snr, neighborhood = neighborhood) == snr
 
+        # Get the indices of the local maxima
+        idx = np.where(snr_maxima==True)
+
+        # Get the SNR values for the local maxima
+        snr_vals = snr[idx]
+        
+        # And turn them into an array with indices and values
+        snr_array = np.append(idx, snr_vals, axis=1)
+
+        return snr_array
+
     # =============================================================================
 
 
@@ -301,31 +312,22 @@ class data_handling:
         data_array = np.array([])
         # bl_array = np.array([])
 
-        if compress_data:
+        for trial in range(data.shape[-1]):
+            for tbin in range(data.shape[-2]):    # Each timebin
+                data_array = np.append(
+                    data_array, [
+                        np.mean(data[:,   :2, tbin, trial], 1).ravel(),
+                        np.mean(data[:,  2:9, tbin, trial], 1).ravel(),
+                        np.mean(data[:, 9:20, tbin, trial], 1).ravel(),
+                        np.mean(data[:, 20:30, tbin, trial], 1).ravel(),
+                        np.mean(data[:, 30:,   tbin, trial], 1).ravel()])
 
-            for trial in range(data.shape[-1]):
-                for tbin in range(data.shape[-2]):    # Each timebin
-                    data_array = np.append(
-                        data_array, [
-                            np.mean(data[:,   :2, tbin, trial], 1).ravel(),
-                            np.mean(data[:,  2:9, tbin, trial], 1).ravel(),
-                            np.mean(data[:, 9:20, tbin, trial], 1).ravel(),
-                            np.mean(data[:, 20:30, tbin, trial], 1).ravel(),
-                            np.mean(data[:, 30:,   tbin, trial], 1).ravel()])
-
-            if log_transform:
-                data_array = np.log(np.reshape(data_array, (-1, 30)))
-            else:
-                data_array = np.reshape(data_array, (-1, 30))
-
+        if log_transform:
+            data_array = np.log(np.reshape(data_array, (-1, 30)))
         else:
+            data_array = np.reshape(data_array, (-1, 30))
 
-            for trial in range(data.shape[-1]):       # Each trial
-                for tbin in range(data.shape[-2]):    # Each timebin
-                    data_array = np.append(data_array,
-                                           [data[:, :27, tbin, trial].ravel()])
-
-            data_array = np.log(np.reshape(data_array, (-1, 27*6)))
+        data_array = np.log(np.reshape(data_array, (-1, 27*6)))
 
         X = data_array
         y = np.ones(data_array.shape[0])*y_label
