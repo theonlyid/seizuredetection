@@ -90,7 +90,7 @@ class data_handling:
 
         return blabel_string
 
-    def plot_channels(self, data_array):
+    def plot_epoch(self, data_array):
         """
         Plots the 6 channels in a subplot for visualization. Takes an image in the shape nchan x timestamps.
         """
